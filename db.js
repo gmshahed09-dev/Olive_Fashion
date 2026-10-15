@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS products (
   price REAL NOT NULL,
   sale_price REAL,
   stock INTEGER NOT NULL DEFAULT 0,
-  images TEXT DEFAULT '[]',
+  image_url TEXT,
   featured INTEGER DEFAULT 0,
   active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now'))

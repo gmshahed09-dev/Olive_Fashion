@@ -4,12 +4,15 @@
   "description": "Olive Fashion e-commerce store — powered by United Vision (Qatar)",
   "main": "server.js",
   "scripts": {
-    "start": "node --experimental-sqlite server.js"
+    "start": "node --no-warnings server.js"
   },
-  "engines": {
-    "node": ">=22.5.0"
-  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "express": "^4.22.3"
+  },
+  "engines": {
+    "node": ">=22.5"
   }
 }
