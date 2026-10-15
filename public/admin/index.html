@@ -146,7 +146,17 @@ async function orders(filter = '') {
 async function orderDetail(id, filter) {
   const o = await api('/api/admin/orders/' + id);
   const wa = '974' + o.phone.replace(/\D/g,'').slice(-8);
-  $('#modalBody').innerHTML = `...`; // Detail renderer
+  $('#modalBody').innerHTML = `<h2>Order ${o.order_no}</h2>
+    <div class="cols2"><div><p><b>${esc(o.customer_name)}</b></p><p>${esc(o.phone)} ${o.email ? '· ' + esc(o.email) : ''}</p>
+      <p>${esc(o.zone)} — ${esc(o.address)}</p>${o.notes ? `<p class="note">Note: ${esc(o.notes)}</p>` : ''}
+      <p class="note">Payment: ${PAY[o.payment_method]}</p></div>
+    <div class="form"><label>Status<select id="ost">${STATUS.map(s => `<option ${s===o.status?'selected':''} value="${s}">${s.replace(/_/g,' ')}</option>`).join('')}</select></label>
+      <button class="btn small" id="osave">Update status</button>
+      <a class="btn small gold" target="_blank" href="https://wa.me/${wa.replace(/\D/g,'')}?text=${encodeURIComponent(`Hello ${o.customer_name}, this is Olive Fashion regarding your order ${o.order_no}.`)}">WhatsApp customer</a></div></div>
+    <table style="margin-top:16px"><thead><tr><th>Item</th><th>Price</th><th>Qty</th><th>Line</th></tr></thead><tbody>
+    ${o.items.map(i => `<tr><td>${esc(i.name)}</td><td>${money(i.price)}</td><td>${i.qty}</td><td>${money(i.price*i.qty)}</td></tr>`).join('')}
+    <tr><td colspan="3">Delivery</td><td>${money(o.delivery_fee)}</td></tr><tr><td colspan="3"><b>Total</b></td><td><b>${money(o.total)}</b></td></tr></tbody></table>
+    <div style="text-align:end;margin-top:14px"><button class="btn small ghost" style="color:var(--olive)" onclick="closeModal()">Close</button></div>`;
   $('#modal').classList.add('open');
   $('#osave').onclick = async () => {
     try { await api('/api/admin/orders/' + id, { method: 'PATCH', body: JSON.stringify({ status: $('#ost').value }) }); toast('Status updated'); closeModal(); orders(filter); }
@@ -174,68 +184,43 @@ async function products() {
 }
 
 function productForm(p) {
-  const nm = c => c.name_en;
   const f = (n, l, type = 'text', extra = '') => `<label>${l}<input name="${n}" type="${type}" value="${esc(p[n] ?? '')}" ${extra}></label>`;
   $('#modalBody').innerHTML = `<form class="form" id="pf"><h2>${p.id ? 'Edit product' : 'New product'}</h2>
     <div class="err" id="perr"></div>
-    <div class="two">${f('sku','SKU','text','required')}<label>Category<select name="category_id" required>${CATS.map(c=>`<option value="${c.id}" ${p.category_id==c.id?'selected':''}>${esc(nm(c))}</option>`).join('')}</select></label></div>
-    <div class="two">${f('name_en','Name (English)','text','required')}${f('name_ar','Name (Arabic)','text')}</div>
+    <div class="two">${f('sku','SKU','text','required')}<label>Category<select name="category_id" required>${CATS.map(c => `<option value="${c.id}" ${c.id==p.category_id?'selected':''}>${esc(c.name_en)}</option>`).join('')}</select></label></div>
+    <div class="two">${f('name_en','Name (English)','text','required')}${f('name_ar','Name (Arabic)','text','dir="rtl"')}</div>
     ${f('brand','Brand')}
-    <div class="two"><label>Description (English)<textarea name="description_en" rows="3">${esc(p.description_en ?? '')}</textarea></label>
-    <label>Description (Arabic)<textarea name="description_ar" rows="3" dir="rtl">${esc(p.description_ar ?? '')}</textarea></label></div>
+    <div class="two"><label>Description (English)<textarea name="description_en" rows="3">${esc(p.description_en)}</textarea></label>
+    <label>Description (Arabic)<textarea name="description_ar" rows="3" dir="rtl">${esc(p.description_ar)}</textarea></label></div>
     <div class="two">${f('price','Price (QAR)','number','step="0.01" min="0" required')}${f('sale_price','Sale price (QAR, optional)','number','step="0.01" min="0"')}</div>
-    <div class="two">${f('stock','Stock','number','min="0"')}</div>
-    <label>Images (Select up to 4 images)<input type="file" id="img" accept="image/png,image/jpeg,image/webp" multiple></label>
-    <input type="hidden" name="images" value="${esc(p.images || (p.image_url ? JSON.stringify([p.image_url]) : '[]'))}">
-    <div id="prev" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-      ${(() => {
-        let imgs = [];
-        try { imgs = JSON.parse(p.images || '[]'); } catch(e) { if(p.image_url) imgs = [p.image_url]; }
-        return imgs.map(url => `<img src="${esc(url)}" style="max-height:80px; border-radius:4px; border:1px solid #ddd;">`).join('');
-      })()}
-    </div>
-    <div style="display:flex;gap:20px;margin-top:12px"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" ${p.active ? 'checked' : ''}> Visible in store</label>
-    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="featured" ${p.featured ? 'checked' : ''}> Featured on home page</label></div>
-    <div style="display:flex;gap:10px;justify-content:space-between;margin-top:20px">
-      ${p.id ? `<button type="button" class="btn small" style="background:var(--danger)" id="pdel">Delete</button>` : '<div></div>'}
-      <div><button type="button" class="btn small ghost" style="color:var(--olive)" onclick="closeModal()">Cancel</button> <button class="btn small">${p.id ? 'Save changes' : 'Create product'}</button></div>
-    </div></form>`;
-  
+    <div class="two">${f('stock','Stock','number','min="0"')}
+      <label>Image<input type="file" id="img" accept="image/png,image/jpeg,image/webp"><input type="hidden" name="image_url" value="${esc(p.image_url ?? '')}"></label></div>
+    <div id="prev">${p.image_url ? `<img src="${esc(p.image_url)}" style="max-height:120px">` : ''}</div>
+    <div style="display:flex;gap:20px"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" ${p.active?'checked':''}> Visible in store</label>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="featured" ${p.featured?'checked':''}> Featured on home page</label></div>
+    <div style="display:flex;gap:10px;justify-content:space-between">
+      ${p.id ? '<button type="button" class="btn small" style="background:var(--danger)" id="pdel">Delete</button>' : '<span></span>'}
+      <div><button type="button" class="btn small ghost" style="color:var(--olive)" onclick="closeModal()">Cancel</button> <button class="btn small">Save</button></div></div></form>`;
   $('#modal').classList.add('open');
-  
-  $('#img').onchange = async e => {
-    const files = Array.from(e.target.files).slice(0, 4);
-    if (!files.length) return;
-    try {
-      toast('Uploading images...');
-      const urls = await Promise.all(files.map(file => new Promise((resolve, reject) => {
-        const rd = new FileReader();
-        rd.onload = async () => {
-          try {
-            const r = await api('/api/admin/upload', { method: 'POST', body: JSON.stringify({ dataUrl: rd.result }) });
-            resolve(r.url);
-          } catch(err) { reject(err); }
-        };
-        rd.readAsDataURL(file);
-      })));
-      
-      $('[name="images"]').value = JSON.stringify(urls);
-      $('#prev').innerHTML = urls.map(u => `<img src="${esc(u)}" style="max-height:80px; border-radius:4px; border:1px solid #ddd;">`).join('');
-      toast('Images uploaded successfully!');
-    } catch (err) { toast(err.message || 'Upload failed'); }
+  $('#img').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const rd = new FileReader();
+    rd.onload = async () => {
+      try { const r = await api('/api/admin/upload', { method: 'POST', body: JSON.stringify({ dataUrl: rd.result }) });
+        $('[name=image_url]').value = r.url; $('#prev').innerHTML = `<img src="${r.url}" style="max-height:120px">`; }
+      catch (err) { toast(err.message); }
+    };
+    rd.readAsDataURL(file);
   };
-
   $('#pf').onsubmit = async e => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
-    d.active = e.target.active.checked; 
-    d.featured = e.target.featured.checked;
+    d.active = e.target.active.checked; d.featured = e.target.featured.checked;
     try {
       await api('/api/admin/products' + (p.id ? '/' + p.id : ''), { method: p.id ? 'PUT' : 'POST', body: JSON.stringify(d) });
       toast('Saved'); closeModal(); products();
     } catch (err) { $('#perr').textContent = err.message; $('#perr').classList.add('show'); }
   };
-
   if (p.id) $('#pdel').onclick = async () => {
     if (!confirm('Delete this product? (Products that have orders will be hidden instead.)')) return;
     const r = await api('/api/admin/products/' + p.id, { method: 'DELETE' });
@@ -294,7 +279,6 @@ async function ads(filter = '') {
   document.querySelectorAll('[data-ad]').forEach(r => r.onclick = () => adForm(list.find(a => a.id == r.dataset.ad), filter));
   $('#newAd').onclick = () => adForm({ kind: 'house', slot: 'home_wide', theme: 'night', status: 'approved', start_date: todayStr(), end_date: new Date(Date.now()+30*864e5).toISOString().slice(0,10), advertiser: 'Olive Fashion', cta_en: 'Shop now', cta_ar: 'تسوق الآن', price: 0 }, filter);
 }
-
 function adForm(a, filter) {
   const f = (n, l, type = 'text', extra = '') => `<label>${l}<input name="${n}" type="${type}" value="${esc(a[n] ?? '')}" ${extra}></label>`;
   const wa = a.phone ? '974' + String(a.phone).replace(/\D/g,'').slice(-8) : '';
