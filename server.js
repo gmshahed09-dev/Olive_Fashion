@@ -183,7 +183,7 @@ app.get('/api/admin/products', auth, (req, res) => {
   res.json(db.prepare(`SELECT p.*, c.name_en AS category_name FROM products p JOIN categories c ON c.id=p.category_id ORDER BY p.id DESC`).all().map(productRow));
 });
 
-const PRODUCT_FIELDS = ['category_id','sku','name_en','name_ar','brand','description_en','description_ar','price','sale_price','stock','image_url','featured','active'];
+const PRODUCT_FIELDS = ['category_id','sku','name_en','name_ar','brand','description_en','description_ar','price','sale_price','stock','images','featured','active'];
 function productValues(b) {
   if (!b.sku || !b.name_en || !b.category_id || !(Number(b.price) > 0)) throw new Error('SKU, English name, category and price are required');
   return PRODUCT_FIELDS.map(f => {
@@ -191,6 +191,7 @@ function productValues(b) {
     if (f === 'featured' || f === 'active') return v ? 1 : 0;
     if (f === 'sale_price') return v === '' || v == null ? null : Number(v);
     if (f === 'price' || f === 'stock' || f === 'category_id') return Number(v) || 0;
+    if (f === 'images') return Array.isArray(v) ? JSON.stringify(v.slice(0, 4)) : (typeof v === 'string' && v ? v : '[]');
     return v ?? '';
   });
 }
