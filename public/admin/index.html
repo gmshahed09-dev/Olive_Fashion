@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Olive Fashion — Admin</title>
+<meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,600&family=Jost:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<style>
+:root{--olive-d:var(--night);--danger:var(--garnet);--paper:#fff;--serif:var(--display)}
+html,body{overflow-x:visible}
+.btn.small{height:36px;padding:0 16px;font-size:13.5px}
+.btn.ghost{background:transparent;box-shadow:inset 0 0 0 1px currentColor}
+.side .logo small{color:#a5ab9f}
+.pill.approved{background:#cfe3cf}.pill.paused{background:#ece6d6}.pill.rejected{background:#f2d8d1}.pill.live{background:#2f6b45;color:#fff}
+.adprev{border-radius:12px;overflow:hidden;margin:6px 0 4px}
+.badge-n{background:var(--garnet);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;margin-inline-start:6px}
+body{background:#f1ede2}
+.login{max-width:380px;margin:12vh auto;padding:0 20px}
+.shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+.side{background:var(--olive-d);color:#d9d4c3;padding:24px 14px;display:flex;flex-direction:column;gap:4px}
+.side .logo b{color:var(--gold-l);font-size:24px}
+.side button{background:none;border:0;color:inherit;text-align:start;padding:10px 12px;cursor:pointer;border-radius:4px;font-size:14px}
+.side button.on,.side button:hover{background:rgba(255,255,255,.08);color:#fff}
+.side .sp{flex:1}
+.mainp{padding:30px 34px;overflow:auto}
+.mainp h1{font-family:var(--serif);font-weight:500;font-size:34px;color:var(--olive-d);margin-bottom:20px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:24px}
+.kpi{background:var(--paper);border:1px solid var(--line);padding:18px}
+.kpi span{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi b{display:block;font-size:26px;color:var(--olive-d);margin-top:4px}
+table{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);font-size:14px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:start;vertical-align:middle}
+th{font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:#faf7ef}
+tr.click{cursor:pointer} tr.click:hover td{background:#f7f3e8}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:#ece6d6}
+.pill.pending{background:#fbecc8}.pill.confirmed{background:#dfe8cf}.pill.out_for_delivery{background:#d9e6ef}.pill.delivered{background:#cfe3cf}.pill.cancelled{background:#f2d8d1}
+.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.toolbar select,.toolbar input{border:1px solid var(--line);background:var(--paper);padding:8px 12px;border-radius:4px}
+.thumb{width:44px;height:44px;background:#efe9db;object-fit:cover}
+.modal{position:fixed;inset:0;background:rgba(20,22,14,.5);display:none;place-items:center;z-index:50;padding:20px}
+.modal.open{display:grid}
+.modal .panel{width:min(760px,100%);max-height:90vh;overflow:auto}
+.bar{height:10px;background:var(--gold);border-radius:2px}
+.small{padding:7px 14px;font-size:12px}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:860px){.shell{grid-template-columns:1fr}.side{flex-direction:row;flex-wrap:wrap}.side .sp{display:none}.kpis,.cols2{grid-template-columns:1fr 1fr}.mainp{padding:20px}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div class="modal" id="modal"><div class="panel" id="modalBody"></div></div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => Number(n).toLocaleString('en-QA', { maximumFractionDigits: 2 }) + ' QAR';
+const STATUS = ['pending','confirmed','out_for_delivery','delivered','cancelled'];
+const PAY = { cod: 'Cash on delivery', card_on_delivery: 'Card on delivery', online: 'Online (send link)' };
+let token = sessionStorage.getItem('adm'), view = 'dashboard', CATS = [];
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token } });
+  const j = await r.json();
+  if (r.status === 401 && url !== '/api/admin/login') { logout(); throw new Error('Session expired'); }
+  if (!r.ok) throw new Error(j.error || 'Error');
+  return j;
+}
+function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+function logout() { api('/api/admin/logout', { method: 'POST' }).catch(() => {}); token = null; sessionStorage.removeItem('adm'); render(); }
+const closeModal = () => $('#modal').classList.remove('open');
+$('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+
+function render() {
+  if (!token) return loginView();
+  $('#root').innerHTML = `<div class="shell">
+    <aside class="side">
+      <div class="logo" style="margin:0 12px 22px"><b>Olive Fashion</b><small>Admin · UV</small></div>
+      ${[['dashboard','Dashboard'],['orders','Orders'],['products','Products'],['categories','Categories'],['ads','Advertising'],['messages','Messages'],['account','Account']]
+        .map(([k,l]) => `<button data-v="${k}" class="${view===k?'on':''}">${l}</button>`).join('')}
+      <div class="sp"></div>
+      <button onclick="window.open('/','_blank')">View store ↗</button>
+      <button onclick="logout()">Log out</button>
+    </aside>
+    <main class="mainp" id="main"></main></div>`;
+  document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { view = b.dataset.v; render(); });
+  ({ dashboard, orders, products, categories, ads, messages, account })[view]();
+}
+
+function loginView() {
+  $('#root').innerHTML = `<div class="login"><form class="panel form" id="lf">
+    <div class="logo" style="margin-bottom:10px"><b>Olive Fashion</b><small>Admin · Powered by United Vision</small></div>
+    <div class="err" id="err"></div>
+    <label>Email<input name="email" type="email" required autocomplete="username"></label>
+    <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
+    <button class="btn block">Sign in</button></form></div>`;
+  $('#lf').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const r = await api('/api/admin/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+      token = r.token; sessionStorage.setItem('adm', token); render();
+    } catch (err) { $('#err').textContent = err.message; $('#err').classList.add('show'); }
+  };
+}
+
+async function dashboard() {
+  const s = await api('/api/admin/stats');
+  const max = Math.max(1, ...s.byCategory.map(c => c.sales));
+  $('#main').innerHTML = `<h1>Dashboard</h1>
+    <div class="kpis">
+      <div class="kpi"><span>Revenue (all time)</span><b>${money(s.revenue)}</b></div>
+      <div class="kpi"><span>Revenue (30 days)</span><b>${money(s.revenue30)}</b></div>
+      <div class="kpi"><span>Orders</span><b>${s.orders}</b></div>
+      <div class="kpi"><span>Pending orders</span><b>${s.pending}</b></div>
+    </div>
+    <div class="cols2">
+      <div class="panel"><h2>Sales by category</h2>
+        ${s.byCategory.map(c => `<div style="margin-bottom:12px"><div class="row"><span>${esc(c.name)}</span><b>${money(c.sales)}</b></div><div class="bar" style="width:${Math.max(2, c.sales / max * 100)}%"></div></div>`).join('')}
+      </div>
+      <div class="panel"><h2>Low stock (≤5)</h2>
+        ${s.lowStock.length ? s.lowStock.map(p => `<div class="row"><span>${esc(p.name_en)}</span><b style="color:var(--danger)">${p.stock}</b></div>`).join('') : '<p class="note">All products are well stocked.</p>'}
+      </div>
+    </div>`;
+}
+
+async function orders(filter = '') {
+  const list = await api('/api/admin/orders' + (filter ? '?status=' + filter : ''));
+  $('#main').innerHTML = `<h1>Orders</h1>
+    <div class="toolbar"><select id="of"><option value="">All statuses</option>${STATUS.map(s => `<option ${s===filter?'selected':''} value="${s}">${s.replace(/_/g,' ')}</option>`).join('')}</select>
+      <button class="btn small ghost" style="color:var(--olive)" id="csv">Export CSV</button></div>
+    <table><thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Area</th><th>Payment</th><th>Total</th><th>Status</th></tr></thead><tbody>
+    ${list.map(o => `<tr class="click" data-o="${o.id}"><td><b>${o.order_no}</b></td><td>${new Date(o.created_at+'Z').toLocaleString('en-GB',{timeZone:'Asia/Qatar'})}</td>
+      <td>${esc(o.customer_name)}<br><small class="note">${esc(o.phone)}</small></td><td>${esc(o.zone)}</td><td>${PAY[o.payment_method]}</td>
+      <td>${money(o.total)}</td><td><span class="pill ${o.status}">${o.status.replace(/_/g,' ')}</span></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No orders yet</td></tr>'}
+    </tbody></table>`;
+  $('#of').onchange = e => orders(e.target.value);
+  document.querySelectorAll('[data-o]').forEach(r => r.onclick = () => orderDetail(r.dataset.o, filter));
+  $('#csv').onclick = () => {
+    const rows = [['Order','Date','Customer','Phone','Area','Address','Payment','Subtotal','Delivery','Total','Status'],
+      ...list.map(o => [o.order_no,o.created_at,o.customer_name,o.phone,o.zone,o.address,o.payment_method,o.subtotal,o.delivery_fee,o.total,o.status])];
+    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob(['﻿'+csv], { type: 'text/csv' })), download: 'orders.csv' }); a.click();
+  };
+}
+
+async function orderDetail(id, filter) {
+  const o = await api('/api/admin/orders/' + id);
+  const wa = '974' + o.phone.replace(/\D/g,'').slice(-8);
+  $('#modalBody').innerHTML = `...`; // Detail renderer
+  $('#modal').classList.add('open');
+  $('#osave').onclick = async () => {
+    try { await api('/api/admin/orders/' + id, { method: 'PATCH', body: JSON.stringify({ status: $('#ost').value }) }); toast('Status updated'); closeModal(); orders(filter); }
+    catch (e) { toast(e.message); }
+  };
+}
+
+async function products() {
+  [CATS] = [await api('/api/admin/categories')];
+  const list = await api('/api/admin/products');
+  $('#main').innerHTML = `<h1>Products</h1>
+    <div class="toolbar"><button class="btn small" id="newP">+ Add product</button><input id="pq" placeholder="Search…"></div>
+    <table><thead><tr><th></th><th>SKU</th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th>Status</th></tr></thead><tbody id="pt"></tbody></table>`;
+  const draw = q => $('#pt').innerHTML = list.filter(p => !q || (p.name_en + p.sku + p.brand).toLowerCase().includes(q.toLowerCase())).map(p => `
+    <tr class="click" data-p="${p.id}"><td>${p.image_url ? `<img class="thumb" src="${esc(p.image_url)}">` : '<div class="thumb"></div>'}</td>
+    <td>${esc(p.sku)}</td><td>${esc(p.name_en)}<br><small class="note">${esc(p.name_ar)}</small></td><td>${esc(p.category_name)}</td>
+    <td>${p.sale_price != null ? `<s class="note">${money(p.price)}</s> ` + money(p.sale_price) : money(p.price)}</td>
+    <td style="${p.stock<=5?'color:var(--danger);font-weight:600':''}">${p.stock}</td>
+    <td>${p.active ? '<span class="pill delivered">Live</span>' : '<span class="pill">Hidden</span>'} ${p.featured ? '<span class="pill pending">★</span>' : ''}</td></tr>`).join('');
+  draw('');
+  $('#pq').oninput = e => { draw(e.target.value); bindRows(); };
+  const bindRows = () => document.querySelectorAll('[data-p]').forEach(r => r.onclick = () => productForm(list.find(p => p.id == r.dataset.p)));
+  bindRows();
+  $('#newP').onclick = () => productForm({ active: true, stock: 0 });
+}
+
+function productForm(p) {
+  const nm = c => c.name_en;
+  const f = (n, l, type = 'text', extra = '') => `<label>${l}<input name="${n}" type="${type}" value="${esc(p[n] ?? '')}" ${extra}></label>`;
+  $('#modalBody').innerHTML = `<form class="form" id="pf"><h2>${p.id ? 'Edit product' : 'New product'}</h2>
+    <div class="err" id="perr"></div>
+    <div class="two">${f('sku','SKU','text','required')}<label>Category<select name="category_id" required>${CATS.map(c=>`<option value="${c.id}" ${p.category_id==c.id?'selected':''}>${esc(nm(c))}</option>`).join('')}</select></label></div>
+    <div class="two">${f('name_en','Name (English)','text','required')}${f('name_ar','Name (Arabic)','text')}</div>
+    ${f('brand','Brand')}
+    <div class="two"><label>Description (English)<textarea name="description_en" rows="3">${esc(p.description_en ?? '')}</textarea></label>
+    <label>Description (Arabic)<textarea name="description_ar" rows="3" dir="rtl">${esc(p.description_ar ?? '')}</textarea></label></div>
+    <div class="two">${f('price','Price (QAR)','number','step="0.01" min="0" required')}${f('sale_price','Sale price (QAR, optional)','number','step="0.01" min="0"')}</div>
+    <div class="two">${f('stock','Stock','number','min="0"')}</div>
+    <label>Images (Select up to 4 images)<input type="file" id="img" accept="image/png,image/jpeg,image/webp" multiple></label>
+    <input type="hidden" name="images" value="${esc(p.images || (p.image_url ? JSON.stringify([p.image_url]) : '[]'))}">
+    <div id="prev" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+      ${(() => {
+        let imgs = [];
+        try { imgs = JSON.parse(p.images || '[]'); } catch(e) { if(p.image_url) imgs = [p.image_url]; }
+        return imgs.map(url => `<img src="${esc(url)}" style="max-height:80px; border-radius:4px; border:1px solid #ddd;">`).join('');
+      })()}
+    </div>
+    <div style="display:flex;gap:20px;margin-top:12px"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="active" ${p.active ? 'checked' : ''}> Visible in store</label>
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="featured" ${p.featured ? 'checked' : ''}> Featured on home page</label></div>
+    <div style="display:flex;gap:10px;justify-content:space-between;margin-top:20px">
+      ${p.id ? `<button type="button" class="btn small" style="background:var(--danger)" id="pdel">Delete</button>` : '<div></div>'}
+      <div><button type="button" class="btn small ghost" style="color:var(--olive)" onclick="closeModal()">Cancel</button> <button class="btn small">${p.id ? 'Save changes' : 'Create product'}</button></div>
+    </div></form>`;
+  
+  $('#modal').classList.add('open');
+  
+  $('#img').onchange = async e => {
+    const files = Array.from(e.target.files).slice(0, 4);
+    if (!files.length) return;
+    try {
+      toast('Uploading images...');
+      const urls = await Promise.all(files.map(file => new Promise((resolve, reject) => {
+        const rd = new FileReader();
+        rd.onload = async () => {
+          try {
+            const r = await api('/api/admin/upload', { method: 'POST', body: JSON.stringify({ dataUrl: rd.result }) });
+            resolve(r.url);
+          } catch(err) { reject(err); }
+        };
+        rd.readAsDataURL(file);
+      })));
+      
+      $('[name="images"]').value = JSON.stringify(urls);
+      $('#prev').innerHTML = urls.map(u => `<img src="${esc(u)}" style="max-height:80px; border-radius:4px; border:1px solid #ddd;">`).join('');
+      toast('Images uploaded successfully!');
+    } catch (err) { toast(err.message || 'Upload failed'); }
+  };
+
+  $('#pf').onsubmit = async e => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    d.active = e.target.active.checked; 
+    d.featured = e.target.featured.checked;
+    try {
+      await api('/api/admin/products' + (p.id ? '/' + p.id : ''), { method: p.id ? 'PUT' : 'POST', body: JSON.stringify(d) });
+      toast('Saved'); closeModal(); products();
+    } catch (err) { $('#perr').textContent = err.message; $('#perr').classList.add('show'); }
+  };
+
+  if (p.id) $('#pdel').onclick = async () => {
+    if (!confirm('Delete this product? (Products that have orders will be hidden instead.)')) return;
+    const r = await api('/api/admin/products/' + p.id, { method: 'DELETE' });
+    toast(r.archived ? 'Product hidden (it has past orders)' : 'Deleted'); closeModal(); products();
+  };
+}
+
+async function categories() {
+  const list = await api('/api/admin/categories');
+  $('#main').innerHTML = `<h1>Categories</h1>
+    <table><thead><tr><th>Order</th><th>Slug</th><th>English</th><th>Arabic</th></tr></thead><tbody>
+    ${list.map(c => `<tr><td>${c.sort}</td><td>${esc(c.slug)}</td><td>${esc(c.name_en)}</td><td dir="rtl">${esc(c.name_ar)}</td></tr>`).join('')}</tbody></table>
+    <form class="panel form" id="cf" style="margin-top:20px;max-width:620px"><h2>Add category</h2>
+      <div class="two"><label>Slug (url name)<input name="slug" required pattern="[a-z0-9-]+" placeholder="sunglasses"></label><label>Sort order<input name="sort" type="number" value="${list.length+1}"></label></div>
+      <div class="two"><label>Name (English)<input name="name_en" required></label><label>Name (Arabic)<input name="name_ar" required dir="rtl"></label></div>
+      <button class="btn small">Add</button></form>`;
+  $('#cf').onsubmit = async e => {
+    e.preventDefault();
+    try { await api('/api/admin/categories', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('Category added'); categories(); }
+    catch (err) { toast(err.message); }
+  };
+}
+
+// ---------- Advertising ----------
+const AD_STATUS = ['pending','approved','paused','rejected'];
+const THEMES = ['night','navy','maroon','olive','gold','pearl'];
+const todayStr = () => new Date().toISOString().slice(0,10);
+const isLive = a => a.status === 'approved' && a.start_date <= todayStr() && a.end_date >= todayStr();
+let ADSLOTS = {};
+async function ads(filter = '') {
+  const { slots, ads: list } = await api('/api/admin/ads');
+  ADSLOTS = slots;
+  const rows = list.filter(a => !filter || (filter === 'live' ? isLive(a) : filter === 'sponsored' ? a.kind === 'sponsored' : a.status === filter));
+  const paidRevenue = list.filter(a => a.kind === 'sponsored' && a.paid).reduce((s, a) => s + a.price, 0);
+  const pending = list.filter(a => a.status === 'pending').length;
+  const imp = list.reduce((s, a) => s + a.impressions, 0), clk = list.reduce((s, a) => s + a.clicks, 0);
+  $('#main').innerHTML = `<h1>Advertising</h1>
+    <div class="kpis">
+      <div class="kpi"><span>Waiting for review</span><b>${pending}</b></div>
+      <div class="kpi"><span>Live now</span><b>${list.filter(isLive).length}</b></div>
+      <div class="kpi"><span>Ad income (paid)</span><b>${money(paidRevenue)}</b></div>
+      <div class="kpi"><span>Views / clicks</span><b>${imp.toLocaleString()} / ${clk.toLocaleString()}</b></div>
+    </div>
+    <div class="toolbar"><select id="af"><option value="">All ads</option><option value="pending" ${filter==='pending'?'selected':''}>Waiting for review</option><option value="live" ${filter==='live'?'selected':''}>Live now</option><option value="sponsored" ${filter==='sponsored'?'selected':''}>Paid by advertisers</option>${['approved','paused','rejected'].map(s=>`<option ${s===filter?'selected':''} value="${s}">${s[0].toUpperCase()+s.slice(1)}</option>`).join('')}</select>
+      <button class="btn small" id="newAd">+ Create ad</button>
+      <a class="btn small ghost" style="color:var(--night)" href="/#/advertise" target="_blank">Open booking page ↗</a></div>
+    <table><thead><tr><th>Ref</th><th>Advertiser</th><th>Headline</th><th>Spot</th><th>Dates</th><th>Price</th><th>Views</th><th>Clicks</th><th>Status</th></tr></thead><tbody>
+    ${rows.map(a => `<tr class="click" data-ad="${a.id}"><td><b>${esc(a.ref)}</b><br><small class="note">${a.kind === 'house' ? 'Our promo' : 'Paid ad'}</small></td>
+      <td>${esc(a.advertiser)}${a.phone ? `<br><small class="note">${esc(a.phone)}</small>` : ''}</td><td>${esc(a.title_en)}</td>
+      <td>${esc(slots[a.slot]?.name_en || a.slot)}</td><td style="white-space:nowrap">${a.start_date}<br>${a.end_date}</td>
+      <td>${a.kind === 'house' ? '—' : money(a.price) + (a.paid ? ' <span class="pill delivered">Paid</span>' : ' <span class="pill pending">Unpaid</span>')}</td>
+      <td>${a.impressions}</td><td>${a.clicks}${a.impressions ? `<br><small class="note">${(a.clicks / a.impressions * 100).toFixed(1)}%</small>` : ''}</td>
+      <td>${isLive(a) ? '<span class="pill live">Live</span>' : `<span class="pill ${a.status}">${a.status}</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">No ads here</td></tr>'}
+    </tbody></table>`;
+  $('#af').onchange = e => ads(e.target.value);
+  document.querySelectorAll('[data-ad]').forEach(r => r.onclick = () => adForm(list.find(a => a.id == r.dataset.ad), filter));
+  $('#newAd').onclick = () => adForm({ kind: 'house', slot: 'home_wide', theme: 'night', status: 'approved', start_date: todayStr(), end_date: new Date(Date.now()+30*864e5).toISOString().slice(0,10), advertiser: 'Olive Fashion', cta_en: 'Shop now', cta_ar: 'تسوق الآن', price: 0 }, filter);
+}
+
+function adForm(a, filter) {
+  const f = (n, l, type = 'text', extra = '') => `<label>${l}<input name="${n}" type="${type}" value="${esc(a[n] ?? '')}" ${extra}></label>`;
+  const wa = a.phone ? '974' + String(a.phone).replace(/\D/g,'').slice(-8) : '';
+  $('#modalBody').innerHTML = `<form class="form" id="adform"><h2>${a.id ? 'Ad ' + esc(a.ref) : 'Create ad'}</h2>
+    <div class="err" id="aderr"></div>
+    ${a.image_url ? `<div class="adprev"><img src="${esc(a.image_url)}" style="max-height:180px;width:100%;object-fit:cover"></div>` : ''}
+    ${a.id && a.kind === 'sponsored' ? `<div class="row"><span>${esc(a.contact_name || '')} ${a.email ? '· ' + esc(a.email) : ''}</span>${wa ? `<a class="btn small gold" target="_blank" href="https://wa.me/${wa}?text=${encodeURIComponent('Hello, this is Olive Fashion about your ad booking ' + a.ref + '.')}">WhatsApp advertiser</a>` : ''}</div>` : ''}
+    <div class="two"><label>Status<select name="status">${AD_STATUS.map(s => `<option ${s===a.status?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label>Type<select name="kind"><option value="house" ${a.kind==='house'?'selected':''}>Our own promotion</option><option value="sponsored" ${a.kind==='sponsored'?'selected':''}>Paid ad (shows "Sponsored")</option></select></label></div>
+    <div class="two"><label>Spot<select name="slot">${Object.entries(ADSLOTS).map(([k,v]) => `<option value="${k}" ${k===a.slot?'selected':''}>${v.name_en} (${v.size})</option>`).join('')}</select></label>${f('advertiser','Advertiser name')}</div>
+    <div class="two">${f('title_en','Headline (English)','text','required maxlength="70"')}${f('title_ar','Headline (Arabic)','text','dir="rtl"')}</div>
+    <div class="two">${f('subtitle_en','Description (English)')}${f('subtitle_ar','Description (Arabic)','text','dir="rtl"')}</div>
+    <div class="two">${f('cta_en','Button (English)')}${f('cta_ar','Button (Arabic)','text','dir="rtl"')}</div>
+    <div class="two">${f('link_url','Link (https://… or #/shop/perfumes)')}<label>Colour<select name="theme">${THEMES.map(t => `<option ${t===a.theme?'selected':''}>${t}</option>`).join('')}</select></label></div>
+    <div class="two">${f('art_sku','Show product art by SKU (optional, e.g. W-002)')}<label>Banner image<input type="file" id="adimg" accept="image/png,image/jpeg,image/webp"><input type="hidden" name="image_url" value="${esc(a.image_url ?? '')}"></label></div>
+    <div class="two">${f('start_date','Start','date','required')}${f('end_date','End','date','required')}</div>
+    <div class="two">${f('price','Price (QAR)','number','min="0" step="1"')}${f('priority','Priority (higher shows first)','number')}</div>
+    <input type="hidden" name="contact_name" value="${esc(a.contact_name ?? '')}"><input type="hidden" name="phone" value="${esc(a.phone ?? '')}"><input type="hidden" name="email" value="${esc(a.email ?? '')}">
+    <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="paid" ${a.paid?'checked':''}> Payment received</label>
+    ${f('admin_note','Internal note')}
+    ${a.id ? `<p class="note">${a.impressions} views, ${a.clicks} clicks. Booked ${a.created_at}.</p>` : ''}
+    <div style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap">
+      ${a.id ? '<button type="button" class="btn small" style="background:var(--danger)" id="addel">Delete</button>' : '<span></span>'}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${a.id && a.status === 'pending' ? '<button type="button" class="btn small ghost" style="color:var(--danger)" id="adrej">Reject</button><button type="button" class="btn small gold" id="adok">Approve</button>' : ''}
+        <button type="button" class="btn small ghost" style="color:var(--night)" onclick="closeModal()">Cancel</button><button class="btn small">Save</button></div></div></form>`;
+  $('#modal').classList.add('open');
+  $('#adimg').onchange = e => {
+    const file = e.target.files[0]; if (!file) return;
+    const rd = new FileReader();
+    rd.onload = async () => { try { const r = await api('/api/admin/upload', { method: 'POST', body: JSON.stringify({ dataUrl: rd.result }) }); $('[name=image_url]').value = r.url; toast('Image uploaded'); } catch (err) { toast(err.message); } };
+    rd.readAsDataURL(file);
+  };
+  const save = async status => {
+    const d = Object.fromEntries(new FormData($('#adform')));
+    d.paid = $('#adform').paid.checked; if (status) d.status = status;
+    try { await api('/api/admin/ads' + (a.id ? '/' + a.id : ''), { method: a.id ? 'PUT' : 'POST', body: JSON.stringify(d) }); toast(status ? 'Ad ' + status : 'Saved'); closeModal(); ads(filter); }
+    catch (err) { $('#aderr').textContent = err.message; $('#aderr').classList.add('show'); }
+  };
+  $('#adform').onsubmit = e => { e.preventDefault(); save(); };
+  if ($('#adok')) $('#adok').onclick = () => save('approved');
+  if ($('#adrej')) $('#adrej').onclick = () => save('rejected');
+  if ($('#addel')) $('#addel').onclick = async () => { if (!confirm('Delete this ad?')) return; await api('/api/admin/ads/' + a.id, { method: 'DELETE' }); toast('Deleted'); closeModal(); ads(filter); };
+}
+
+async function messages() {
+  const list = await api('/api/admin/messages');
+  $('#main').innerHTML = `<h1>Messages</h1><table><thead><tr><th>Date</th><th>Name</th><th>Contact</th><th>Message</th></tr></thead><tbody>
+    ${list.map(m => `<tr><td>${new Date(m.created_at+'Z').toLocaleString('en-GB',{timeZone:'Asia/Qatar'})}</td><td>${esc(m.name)}</td><td>${esc(m.phone)}<br>${esc(m.email)}</td><td>${esc(m.message)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">No messages</td></tr>'}</tbody></table>`;
+}
+
+function account() {
+  $('#main').innerHTML = `<h1>Account</h1><form class="panel form" id="af" style="max-width:420px"><h2>Change password</h2>
+    <label>Current password<input type="password" name="current" required></label>
+    <label>New password (min 8)<input type="password" name="next" required minlength="8"></label>
+    <button class="btn small">Update</button></form>`;
+  $('#af').onsubmit = async e => {
+    e.preventDefault();
+    try { await api('/api/admin/password', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) }); toast('Password changed'); e.target.reset(); }
+    catch (err) { toast(err.message); }
+  };
+}
+render();
+</script>
+</body>
+</html>
