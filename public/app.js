@@ -30,7 +30,6 @@ const T = {
     policies: 'Delivery and returns', shop: 'Shop', help: 'Help', business: 'For business', wholesale: 'Corporate and wholesale',
     address: 'Doha, State of Qatar', footAbout: 'Watches, perfumes, wallets and accessories, chosen by United Vision and delivered across Qatar.',
     qar: 'All prices in Qatari Riyal (QAR)', cur: 'QAR',
-    // advertise
     advH: 'Advertise on Olive Fashion', advP: 'Put your brand in front of shoppers across Qatar. Choose a spot, send your ad, and pay only after we approve it.',
     advWhyH: 'Reach people who are ready to buy', advWhyP: 'Our visitors are shopping for watches, perfume and gifts in Qatar. Your banner appears beside the products they are choosing, in English and Arabic.',
     step1: 'Choose a spot and dates', step1s: 'Pick where your ad appears and for how long.', step2: 'Send your ad', step2s: 'Upload a banner, or write a headline and we design it in our style.',
@@ -100,6 +99,11 @@ const loc = (o, f) => (lang === 'ar' && o[f + '_ar']) || o[f + '_en'] || '';
 const fmt = n => Number(n).toLocaleString(lang === 'ar' ? 'ar-QA' : 'en-QA', { maximumFractionDigits: 2 });
 const money = n => `${fmt(n)} ${t('cur')}`;
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+// Safe Art Helpers
+const categoryArt = slug => `<div class="cat-art cat-${slug || 'default'}"></div>`;
+const productArt = p => `<div class="prod-art"></div>`;
+
 async function api(url, opts = {}) {
   const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
   const j = await r.json().catch(() => ({}));
@@ -116,7 +120,44 @@ const ICON = {
 };
 
 // ---------- Product imagery ----------
-const imgOf = p => p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(nm(p))}" loading="lazy">` : productArt(p);
+const imgOf = p => {
+  // The API may return `images` as an array or as a JSON string.
+  // Handle both forms, and fall back to the legacy single-image field.
+  let imgs = [];
+  const rawImages = p?.images ?? p?.image_urls ?? p?.gallery;
+  if (Array.isArray(rawImages)) {
+    imgs = rawImages;
+  } else if (typeof rawImages === 'string' && rawImages.trim()) {
+    try {
+      const parsed = JSON.parse(rawImages);
+      imgs = Array.isArray(parsed) ? parsed : [parsed];
+    } catch (e) {
+      // Some older records may store one image path as plain text.
+      imgs = [rawImages];
+    }
+  }
+  if (!imgs.length) {
+    const single = p?.image_url ?? p?.image ?? p?.photo;
+    if (Array.isArray(single)) imgs = single;
+    else if (typeof single === 'string' && single.trim()) imgs = [single];
+  }
+  imgs = imgs.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim());
+  if (!imgs.length) return `<img src="/uploads/placeholder.jpg" alt="${esc(nm(p))}" loading="lazy">`;
+
+  const mainImgId = `main-img-${String(p.id).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  return `
+    <div class="prod-img-box">
+      <img id="${mainImgId}" src="${esc(imgs[0])}" alt="${esc(nm(p))}" loading="lazy" onerror="this.onerror=null;this.src='/uploads/placeholder.jpg'">
+      ${imgs.length > 1 ? `
+        <div class="thumb-list" style="display:flex; gap:4px; margin-top:6px; justify-content:center;">
+          ${imgs.map((img) => `
+            <img src="${esc(img)}" alt="${esc(nm(p))}" loading="lazy" onclick="const m=document.getElementById('${mainImgId}');if(m)m.src=this.src" style="width:35px;height:35px;object-fit:cover;border-radius:4px;cursor:pointer;border:1px solid #ddd;" onerror="this.style.display='none'">
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+  `;
+};
 const bySku = sku => ALL.find(p => p.sku === sku);
 
 // ---------- Ads ----------
@@ -141,7 +182,7 @@ function adArt(a) {
 }
 function bannerHTML(a, variant = '') {
   markSeen(a.id);
-  const img = a.image_url;
+  const img = Array.isArray(a.image_url) ? a.image_url[0] : a.image_url;
   const art = img ? '' : adArt(a);
   return `<a class="banner ${variant} ${img ? 'img' : 't-' + (a.theme || 'night')} ${img || art ? '' : 'noart'}" href="${adHref(a)}" ${adAttrs(a)}>
     ${img ? `<div class="photo"><img src="${esc(img)}" alt=""></div>` : '<div class="bgp"></div>'}
@@ -156,13 +197,13 @@ function chrome() {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   document.querySelectorAll('[data-t]').forEach(el => el.innerHTML = t(el.dataset.t));
-  $('#langBtn').textContent = t('langBtn');
-  $('#yr').textContent = new Date().getFullYear();
+  if ($('#langBtn')) $('#langBtn').textContent = t('langBtn');
+  if ($('#yr')) $('#yr').textContent = new Date().getFullYear();
   const h = location.hash || '#/';
   const link = (href, label) => `<a href="${href}" class="${h === href ? 'on' : ''}">${label}</a>`;
-  $('#nav').innerHTML = link('#/', t('home')) + CATS.map(c => link('#/shop/' + c.slug, esc(nm(c)))).join('') + link('#/advertise', t('advertise'));
-  $('#footCats').innerHTML = CATS.map(c => `<a href="#/shop/${c.slug}">${esc(nm(c))}</a>`).join('');
-  if (SETTINGS) $('#wa').href = `https://wa.me/${SETTINGS.whatsapp}`;
+  if ($('#nav')) $('#nav').innerHTML = link('#/', t('home')) + CATS.map(c => link('#/shop/' + c.slug, esc(nm(c)))).join('') + link('#/advertise', t('advertise'));
+  if ($('#footCats')) $('#footCats').innerHTML = CATS.map(c => `<a href="#/shop/${c.slug}">${esc(nm(c))}</a>`).join('');
+  if (SETTINGS && $('#wa')) $('#wa').href = `https://wa.me/${SETTINGS.whatsapp}`;
   renderCart();
 }
 
@@ -171,13 +212,14 @@ const saveCart = () => { localStorage.setItem('cart', JSON.stringify(cart)); ren
 function addToCart(p, qty = 1) {
   const ex = cart.find(i => i.id === p.id);
   if (ex) ex.qty = Math.min(p.stock, ex.qty + qty);
-  else cart.push({ id: p.id, sku: p.sku, name_en: p.name_en, name_ar: p.name_ar, price: p.sale_price ?? p.price, image_url: p.image_url, category: p.category, qty: Math.min(p.stock, qty), stock: p.stock });
+  else cart.push({ id: p.id, sku: p.sku, name_en: p.name_en, name_ar: p.name_ar, price: p.sale_price ?? p.price, image_url: p.image_url, images: p.images, category: p.category, qty: Math.min(p.stock, qty), stock: p.stock });
   saveCart(); toast(t('added')); openCart(true);
 }
 const subtotal = () => cart.reduce((s, i) => s + i.price * i.qty, 0);
 function renderCart() {
-  $('#cartCount').textContent = cart.reduce((s, i) => s + i.qty, 0);
-  if (!cart.length) { $('#cartItems').innerHTML = `<div class="empty"><p>${t('emptyBag')}</p><br><a class="btn sm" href="#/shop">${t('shopNow')}</a></div>`; $('#cartFoot').innerHTML = ''; return; }
+  if ($('#cartCount')) $('#cartCount').textContent = cart.reduce((s, i) => s + i.qty, 0);
+  if (!$('#cartItems')) return;
+  if (!cart.length) { $('#cartItems').innerHTML = `<div class="empty"><p>${t('emptyBag')}</p><br><a class="btn sm" href="#/shop">${t('shopNow')}</a></div>`; if ($('#cartFoot')) $('#cartFoot').innerHTML = ''; return; }
   $('#cartItems').innerHTML = cart.map(i => `
     <div class="ln"><div class="th st-${i.category}">${imgOf(i)}</div>
       <div><div class="nm">${esc(nm(i))}</div><div class="note">${money(i.price)}</div>
@@ -186,12 +228,14 @@ function renderCart() {
           <button class="rm" data-rm="${i.id}">${t('remove')}</button></div></div>
       <b style="font-weight:500">${money(i.price * i.qty)}</b></div>`).join('');
   const st = subtotal(), lim = SETTINGS?.freeDeliveryOver ?? 300, free = st >= lim;
-  $('#cartFoot').innerHTML = `
-    <div class="note">${free ? t('gotFree') : t('moreFree', { n: money(lim - st) })}</div>
-    <div class="meter"><i style="width:${Math.min(100, st / lim * 100)}%"></i></div>
-    <div class="row"><span>${t('subtotal')}</span><b style="font-weight:500">${money(st)}</b></div>
-    <div class="row"><span>${t('delivery')}</span><span>${free ? t('free') : t('atCheckout')}</span></div>
-    <a href="#/checkout" class="btn block" style="margin-top:12px">${t('checkout')}</a>`;
+  if ($('#cartFoot')) {
+    $('#cartFoot').innerHTML = `
+      <div class="note">${free ? t('gotFree') : t('moreFree', { n: money(lim - st) })}</div>
+      <div class="meter"><i style="width:${Math.min(100, st / lim * 100)}%"></i></div>
+      <div class="row"><span>${t('subtotal')}</span><b style="font-weight:500">${money(st)}</b></div>
+      <div class="row"><span>${t('delivery')}</span><span>${free ? t('free') : t('atCheckout')}</span></div>
+      <a href="#/checkout" class="btn block" style="margin-top:12px">${t('checkout')}</a>`;
+  }
 }
 document.addEventListener('click', e => {
   const d = e.target.closest('[data-inc],[data-dec],[data-rm],[data-add]')?.dataset;
@@ -201,14 +245,14 @@ document.addEventListener('click', e => {
   if (d.rm) { cart = cart.filter(x => x.id != d.rm); saveCart(); }
   if (d.add) { const p = ALL.find(x => x.id == d.add); if (p) addToCart(p); }
 });
-function openCart(open) { $('#drawer').classList.toggle('open', open); $('#overlay').classList.toggle('open', open); }
-$('#cartBtn').onclick = () => openCart(true);
-$('#closeCart').onclick = $('#overlay').onclick = () => openCart(false);
-$('#menuBtn').onclick = () => $('#nav').classList.toggle('open');
-$('#langBtn').onclick = () => { lang = lang === 'en' ? 'ar' : 'en'; localStorage.setItem('lang', lang); route(); };
+function openCart(open) { $('#drawer')?.classList.toggle('open', open); $('#overlay')?.classList.toggle('open', open); }
+if ($('#cartBtn')) $('#cartBtn').onclick = () => openCart(true);
+if ($('#closeCart')) $('#closeCart').onclick = $('#overlay').onclick = () => openCart(false);
+if ($('#menuBtn')) $('#menuBtn').onclick = () => $('#nav').classList.toggle('open');
+if ($('#langBtn')) $('#langBtn').onclick = () => { lang = lang === 'en' ? 'ar' : 'en'; localStorage.setItem('lang', lang); route(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') openCart(false); });
 let toastTimer;
-function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200); }
+function toast(msg) { const el = $('#toast'); if (!el) return; el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2200); }
 
 // ---------- Components ----------
 function card(p) {
@@ -217,7 +261,7 @@ function card(p) {
     <div class="img st-${p.category}">
       ${onSale ? `<span class="flag">${t('sale')}</span>` : ''}
       <a class="cover" href="#/product/${p.id}" aria-label="${esc(nm(p))}">${imgOf(p)}</a>
-      ${p.stock > 0 ? `<button class="quick" data-add="${p.id}" aria-label="${esc(t('addToBag'))}: ${esc(nm(p))}">${ICON.bag}<span>${t('add')}</span></button>` : ''}
+      ${p.stock > 0 ? `<button class="quick" data-add="${p.id}" aria-label="${esc(t('addToBag'))}:${esc(nm(p))}">${ICON.bag}<span>${t('add')}</span></button>` : ''}
     </div>
     <div class="meta"><div class="brand">${esc(p.brand || '')}</div>
       <a href="#/product/${p.id}"><h3>${esc(nm(p))}</h3></a>
@@ -234,12 +278,11 @@ function heroHTML() {
   slides.forEach(s => markSeen(s.id));
   return `<section class="hero" id="hero" aria-roledescription="carousel">
     ${slides.map((s, i) => `<div class="slide ${i ? '' : 'on'} t-${s.theme || 'night'} ${s.image_url ? 'has-img' : ''}" aria-hidden="${i ? 'true' : 'false'}">
-      ${s.image_url ? `<div class="photo"><img src="${esc(s.image_url)}" alt=""></div>` : '<div class="bgp"></div>'}
+      ${s.image_url ? `<div class="photo"><img src="${esc(Array.isArray(s.image_url) ? s.image_url[0] : s.image_url)}" alt=""></div>` : '<div class="bgp"></div>'}
       <div class="wrap"><div>${sponsorTag(s)}
         <h1 class="display">${esc(loc(s, 'title'))}</h1>
         <p class="lead">${esc(loc(s, 'subtitle'))}</p>
-        <div class="ctas"><a class="btn ${s.theme === 'gold' || s.theme === 'pearl' ? '' : 'gold'}" href="${adHref(s)}" ${s.id ? adAttrs(s) : ''}>${esc(loc(s, 'cta') || t('learnMore'))}</a>
-          ${s.kind === 'house' ? `<a class="btn line" href="#/shop">${t('all')}</a>` : ''}</div></div>
+        <div class="ctas"><a class="btn ${s.theme === 'gold' || s.theme === 'pearl' ? '' : 'gold'}" href="${adHref(s)}" ${s.id ? adAttrs(s) : ''}>${esc(loc(s, 'cta') || t('learnMore'))}</a>${s.kind === 'house' ? `<a class="btn line" href="#/shop">${t('all')}</a>` : ''}</div></div>
         ${s.image_url ? '' : `<div class="arch"><div class="ring"></div><div class="frame"><div class="art">${adArt(s)}</div></div></div>`}
       </div></div>`).join('')}
     ${slides.length > 1 ? `<div class="hero-nav"><div class="wrap">${slides.map((s, i) => `<button class="${i ? '' : 'on'}" data-slide="${i}">${esc(loc(s, 'title'))}<i></i></button>`).join('')}</div></div>` : ''}
@@ -318,7 +361,7 @@ async function pageShop(slug) {
   if (sessionStorage.getItem('focusSearch')) { sessionStorage.removeItem('focusSearch'); $('#q').focus(); }
   load();
 }
-$('#searchBtn').addEventListener('click', () => sessionStorage.setItem('focusSearch', 1));
+if ($('#searchBtn')) $('#searchBtn').addEventListener('click', () => sessionStorage.setItem('focusSearch', 1));
 
 async function pageProduct(id) {
   let p;
@@ -469,7 +512,7 @@ async function pageAdvertise() {
     </div>
     <div class="sec-h" style="margin:40px 0 0"><h2 class="display" style="font-size:36px">${t('spotsH')}</h2></div>
     <div class="packs">${slots.map(s => `<button type="button" class="pack ${s.key === slot ? 'on' : ''}" data-pack="${s.key}">${whereSVG(s.key)}
-      <h4>${esc(lang === 'ar' ? s.name_ar : s.name_en)}</h4><div class="from">${t('from')} <b>${money(s.weekly)}</b> ${t('perWeek')}</div><span class="note">${s.size}</span></button>`).join('')}</div>
+      <h4>${esc(lang === 'ar' ? s.name_ar : s.name_en)}</h4><div class="from">${t('from')} <b>${money(s.weekly)}</b>${t('perWeek')}</div><span class="note">${s.size}</span></button>`).join('')}</div>
     <div class="book">
       <form class="panel form" id="adf" novalidate>
         <h2>${t('bookH')}</h2><div class="err" id="aerr" role="alert"></div>
@@ -485,7 +528,7 @@ async function pageAdvertise() {
         <div class="two"><label>${t('ctaL')}<input name="cta_en" maxlength="24" value="Learn more"></label><label>${t('linkL')}<input name="link_url" type="url" placeholder="https://"></label></div>
         <div><div style="font-size:14px;color:var(--muted);margin-bottom:7px">${t('themeL')}</div>
           <div class="swatches">${Object.entries(themes).map(([k, c], i) => `<label style="background:${c}" title="${k}"><input type="radio" name="theme" value="${k}" ${i ? '' : 'checked'}><span class="sr">${k}</span></label>`).join('')}</div></div>
-        <label>${t('imgL')}<input type="file" id="aimg" accept="image/png,image/jpeg,image/webp"><span class="note" id="ahint"></span></label>
+        <label>${t('imgL')}</label><input type="file" id="aimg" accept="image/png,image/jpeg,image/webp" multiple><span class="note"> (Up to 4)</span>
         <div class="quote"><span>${t('totalL')}</span><b id="aquote"></b></div>
         <p class="note">${t('payAfter')}</p>
         <button class="btn block" id="abtn">${t('submitAd')}</button>
@@ -494,26 +537,42 @@ async function pageAdvertise() {
     </div>
   </div>`;
   const form = $('#adf');
-  let imgData = null;
+  let imgData = [];
+  
   const val = () => Object.fromEntries(new FormData(form));
   const update = () => {
     const v = val(); slot = v.slot; sessionStorage.setItem('adSlot', slot);
     document.querySelectorAll('[data-pack]').forEach(b => b.classList.toggle('on', b.dataset.pack === slot));
     const s = slots.find(x => x.key === slot);
-    $('#aquote').textContent = money(s.prices.find(p => p.weeks == v.weeks).price);
-    $('#ahint').textContent = t('imgHint', { s: s.size });
+    if ($('#aquote') && s) $('#aquote').textContent = money(s.prices.find(p => p.weeks == v.weeks).price);
     const ad = { preview: true, kind: 'sponsored', advertiser: v.company || '…', theme: v.theme, image_url: imgData,
       title_en: v.title_en || T.en.sampleHead, title_ar: v.title_ar || (lang === 'ar' ? T.ar.sampleHead : ''), subtitle_en: v.subtitle_en || T.en.sampleSub, subtitle_ar: v.subtitle_ar || (lang === 'ar' ? T.ar.sampleSub : ''),
       cta_en: v.cta_en || T.en.learnMore, cta_ar: lang === 'ar' ? T.ar.learnMore : '' };
-    $('#apreview').innerHTML = bannerHTML(ad, slot === 'shop_top' || slot === 'product' ? 'slim' : '');
+    if ($('#apreview')) $('#apreview').innerHTML = bannerHTML(ad, slot === 'shop_top' || slot === 'product' ? 'slim' : '');
   };
+  
   form.oninput = form.onchange = update;
   document.querySelectorAll('[data-pack]').forEach(b => b.onclick = () => { $('#aslot').value = b.dataset.pack; update(); $('#adf').scrollIntoView({ behavior: 'smooth' }); });
-  $('#aimg').onchange = e => {
-    const f = e.target.files[0]; if (!f) { imgData = null; return update(); }
-    if (f.size > 3 * 1024 * 1024) { e.target.value = ''; toast('Image must be under 3 MB'); return; }
-    const rd = new FileReader(); rd.onload = () => { imgData = rd.result; update(); }; rd.readAsDataURL(f);
-  };
+  
+  const aimgEl = $('#aimg');
+  if (aimgEl) {
+    aimgEl.onchange = async e => {
+      const files = Array.from(e.target.files).slice(0, 4);
+      if (!files.length) { imgData = []; return update(); }
+      for (let f of files) {
+        if (f.size > 3 * 1024 * 1024) { e.target.value = ''; toast('Each image must be under 3 MB'); return; }
+      }
+      imgData = await Promise.all(files.map(file => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+      }));
+      update();
+    };
+  }
+
   form.onsubmit = async e => {
     e.preventDefault();
     $('#abtn').disabled = true; $('#aerr').classList.remove('show');
@@ -532,17 +591,48 @@ async function pageAdvertise() {
   update();
 }
 
-// ---------- Router ----------
+// ---------- Router & App Initialization ----------
 async function route() {
-  clearInterval(heroTimer);
+  if (typeof heroTimer !== 'undefined' && heroTimer) clearInterval(heroTimer);
   const [page, arg] = location.hash.replace(/^#\/?/, '').split('/');
-  chrome(); openCart(false); $('#nav').classList.remove('open'); window.scrollTo(0, 0);
-  const pages = { shop: () => pageShop(arg), product: () => pageProduct(arg), checkout: pageCheckout, thanks: () => pageThanks(arg), track: pageTrack, contact: pageContact, policies: pagePolicies, advertise: pageAdvertise };
+  chrome(); 
+  openCart(false); 
+  $('#nav')?.classList.remove('open'); 
+  window.scrollTo(0, 0);
+  
+  const pages = { 
+    shop: () => pageShop(arg), 
+    product: () => pageProduct(arg), 
+    checkout: pageCheckout, 
+    thanks: () => pageThanks(arg), 
+    track: pageTrack, 
+    contact: pageContact, 
+    policies: pagePolicies, 
+    advertise: pageAdvertise 
+  };
+  
   await (pages[page] || pageHome)();
   flushSeen();
 }
+
 window.addEventListener('hashchange', route);
+
+// Safe Initialization
 (async () => {
-  [CATS, SETTINGS, ALL, ADS] = await Promise.all([api('/api/categories'), api('/api/settings'), api('/api/products'), api('/api/ads').catch(() => ({}))]);
-  route();
+  try {
+    const [c, s, p, a] = await Promise.all([
+      api('/api/categories').catch(() => []),
+      api('/api/settings').catch(() => ({ zones: {} })),
+      api('/api/products').catch(() => []),
+      api('/api/ads').catch(() => ({}))
+    ]);
+    CATS = Array.isArray(c) ? c : [];
+    SETTINGS = s || { zones: {} };
+    ALL = Array.isArray(p) ? p : [];
+    ADS = a || {};
+    route();
+  } catch (e) {
+    console.error("Initialization error:", e);
+    route();
+  }
 })();

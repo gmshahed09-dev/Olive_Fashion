@@ -30,7 +30,16 @@ const QA_PHONE = /^(\+?974)?[3567]\d{7}$/; // Qatar mobile numbers
 
 // ---------- Helpers ----------
 const bad = (res, msg, code = 400) => res.status(code).json({ error: msg });
-const productRow = r => r && ({ ...r, featured: !!r.featured, active: !!r.active });
+const productRow = r => {
+  if (!r) return r;
+  let images = [];
+  try {
+    const parsed = JSON.parse(r.image_urls || '[]');
+    if (Array.isArray(parsed)) images = parsed.filter(x => typeof x === 'string' && x.trim());
+  } catch {}
+  if (!images.length && r.image_url) images = [r.image_url];
+  return { ...r, images, featured: !!r.featured, active: !!r.active };
+};
 
 function auth(req, res, next) {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -183,11 +192,22 @@ app.get('/api/admin/products', auth, (req, res) => {
   res.json(db.prepare(`SELECT p.*, c.name_en AS category_name FROM products p JOIN categories c ON c.id=p.category_id ORDER BY p.id DESC`).all().map(productRow));
 });
 
-const PRODUCT_FIELDS = ['category_id','sku','name_en','name_ar','brand','description_en','description_ar','price','sale_price','stock','image_url','featured','active'];
+const PRODUCT_FIELDS = ['category_id','sku','name_en','name_ar','brand','description_en','description_ar','price','sale_price','stock','image_url','image_urls','featured','active'];
 function productValues(b) {
   if (!b.sku || !b.name_en || !b.category_id || !(Number(b.price) > 0)) throw new Error('SKU, English name, category and price are required');
   return PRODUCT_FIELDS.map(f => {
     let v = b[f];
+    if (f === 'image_urls') {
+      let arr = [];
+      if (Array.isArray(v)) arr = v;
+      else if (typeof v === 'string' && v.trim()) { try { const parsed = JSON.parse(v); arr = Array.isArray(parsed) ? parsed : [v]; } catch { arr = [v]; } }
+      arr = arr.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim());
+      return JSON.stringify(arr);
+    }
+    if (f === 'image_url') {
+      const urls = Array.isArray(b.image_urls) ? b.image_urls : (() => { try { const a = JSON.parse(b.image_urls || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } })();
+      return urls[0] || v || '';
+    }
     if (f === 'featured' || f === 'active') return v ? 1 : 0;
     if (f === 'sale_price') return v === '' || v == null ? null : Number(v);
     if (f === 'price' || f === 'stock' || f === 'category_id') return Number(v) || 0;

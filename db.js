@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 `);
 
+// Backward-compatible migration: support a gallery of product images.
+try { db.exec('ALTER TABLE products ADD COLUMN image_urls TEXT'); } catch (e) {
+  if (!String(e.message).includes('duplicate column name')) throw e;
+}
+
 function hashPassword(pw) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(pw, salt, 64).toString('hex');

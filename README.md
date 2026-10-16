@@ -5,7 +5,7 @@ A complete e-commerce website for watches, perfumes, men's wallets and ladies' a
 
 - **Storefront** — English / Arabic (full right-to-left), prices in QAR, category pages, search & sort, product pages, cart, checkout, order tracking, contact form, delivery & returns page, WhatsApp button. Mobile-friendly.
 - **Qatar checkout** — Qatar mobile validation (+974, 8 digits), delivery fees by area (Doha, Al Rayyan, Lusail, Al Wakrah, Al Khor, etc.), free delivery over 300 QAR, Cash on delivery / Card on delivery / Online pay-link.
-- **Admin panel** (`/admin`) — sales dashboard, orders (status updates, WhatsApp the customer, CSV export), products (add/edit, Arabic + English, sale prices, stock, image upload, featured), categories, contact messages, change password.
+- **Admin panel** (`/admin`) — sales dashboard, orders (status updates, WhatsApp the customer, CSV export), products (add/edit, Arabic + English, sale prices, stock, up to 4 product photos, featured), categories, contact messages, change password.
 - **Advertising** — other businesses can book paid banners on the site (see below).
 - **Backend** — Node.js + Express with a built-in SQLite database (one file, no separate DB server). Stock is reduced on each order and restored if an order is cancelled.
 
