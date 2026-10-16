@@ -24,7 +24,7 @@ const STORE = {
     'Al Daayen': 20, 'Al Khor': 30, 'Mesaieed': 30, 'Al Shamal': 40, 'Al Shahaniya': 35,
   },
   payments: ['cod', 'card_on_delivery', 'online'],
-  whatsapp: process.env.WHATSAPP || '97400000000',
+  whatsapp: process.env.WHATSAPP || '+97471701747',
 };
 const QA_PHONE = /^(\+?974)?[3567]\d{7}$/; // Qatar mobile numbers
 
