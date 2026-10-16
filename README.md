@@ -70,6 +70,7 @@ Then point your domain (e.g. `olivefashion.qa`) to the server.
 ## Before going live — checklist
 - [ ] Change the admin password
 - [ ] Set your real WhatsApp number and shop address
+- [ ] Auto-deploy test
 - [ ] Replace sample products and add real photos
 - [ ] Confirm delivery fees per area
 - [ ] **Online card payments:** the "Online payment" option currently records the order so your team can send a pay link. For automatic card payments, connect a Qatar payment gateway (e.g. QPay, CBQ / QNB merchant gateway, SkipCash, Tap, or MyFatoorah) — the hook point is `POST /api/orders` in `server.js`.
