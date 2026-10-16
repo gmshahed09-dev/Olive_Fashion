@@ -206,19 +206,9 @@ function productForm(p) {
     const files = Array.from(e.target.files || []).slice(0, 4);
     if (!files.length) return;
     if (e.target.files.length > 4) toast('Only the first 4 photos will be used');
-    // Keep photos uploaded in earlier selections, so selecting photos one-by-one
-    // does not overwrite the previous images. The store supports up to 4 images.
-    let uploaded = [];
+    const uploaded = [];
     try {
-      try {
-        const existing = JSON.parse($('[name=image_urls]').value || '[]');
-        if (Array.isArray(existing)) uploaded = existing.filter(x => typeof x === 'string' && x.trim());
-      } catch {}
       for (const file of files) {
-        if (uploaded.length >= 4) {
-          toast('Maximum 4 photos per product. Extra photos were skipped.');
-          break;
-        }
         if (file.size > 4 * 1024 * 1024) throw new Error(`${file.name} is over 4 MB`);
         const dataUrl = await new Promise((resolve, reject) => {
           const rd = new FileReader();
@@ -232,8 +222,7 @@ function productForm(p) {
       $('[name=image_urls]').value = JSON.stringify(uploaded);
       $('[name=image_url]').value = uploaded[0] || '';
       $('#prev').innerHTML = uploaded.map(url => `<img src="${url}" style="max-height:90px;max-width:100px;object-fit:contain">`).join('');
-      e.target.value = '';
-      toast(`${uploaded.length} photo(s) saved in the form; click Save to keep changes`);
+      toast(`${uploaded.length} photo(s) uploaded`);
     } catch (err) { toast(err.message); }
   };
   $('#pf').onsubmit = async e => {
